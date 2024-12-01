@@ -1,13 +1,13 @@
 use std::fs;
 
-struct Input {
+struct Problem {
     left: Vec<u32>,
     right: Vec<u32>,
 }
 
-impl Input {
+impl Problem {
     fn from_string(string: String) -> Self {
-        let (mut left, mut right): (Vec<u32>, Vec<u32>) = string
+        let (left, right) = string
             .lines()
             .map(|line| {
                 let mut ws = line.split_whitespace();
@@ -18,28 +18,36 @@ impl Input {
             })
             .unzip();
 
-        left.sort();
-        right.sort();
-
         Self { left, right }
     }
 
-    fn part1(&self) -> u32 {
+    fn part_1(&self) -> u32 {
+        let mut left = self.left.clone();
+        let mut right = self.right.clone();
+
+        left.sort();
+        right.sort();
+
+        left.iter()
+            .zip(right.iter())
+            .map(|(&a, &b)| a.abs_diff(b))
+            .sum()
+    }
+
+    fn part_2(&self) -> u32 {
         self.left
             .iter()
-            .zip(self.right.iter())
-            .map(|(&a, &b)| a.abs_diff(b))
+            .map(|&left| left * self.right.iter().filter(|&&right| left == right).count() as u32)
             .sum()
     }
 }
 
-fn part1() -> u32 {
-    Input::from_string(fs::read_to_string("input/day1.txt").expect("Failed to read input"))
-        .part1()
-}
-
 fn main() {
-    println!("Part 1: {}", part1());
+    let problem =
+        Problem::from_string(fs::read_to_string("input/day1.txt").expect("Failed to read input"));
+
+    println!("Part 1: {}", problem.part_1());
+    println!("Part 2: {}", problem.part_2());
 }
 
 #[cfg(test)]
@@ -47,10 +55,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_part1() {
+    fn test_part_1() {
         assert_eq!(
             11,
-            Input::from_string(
+            Problem::from_string(
                 "3   4\n\
                 4   3\n\
                 2   5\n\
@@ -59,7 +67,24 @@ mod tests {
                 3   3"
                     .to_string(),
             )
-            .part1()
+            .part_1()
+        );
+    }
+
+    #[test]
+    fn test_part_2() {
+        assert_eq!(
+            31,
+            Problem::from_string(
+                "3   4\n\
+                4   3\n\
+                2   5\n\
+                1   3\n\
+                3   9\n\
+                3   3"
+                    .to_string(),
+            )
+            .part_2()
         );
     }
 }
