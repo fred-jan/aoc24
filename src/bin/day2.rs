@@ -10,18 +10,27 @@ impl Report {
         Self { levels }
     }
 
+    /// Returns a sign number indicating the average gradient of the report levels
+    /// (-1 = descending, +1 = ascending, 0 = no gradient)
+    fn gradient_sign(&self) -> i32 {
+        self.levels
+            .windows(2)
+            .map(|window| (window[1] - window[0]).signum())
+            .sum::<i32>()
+            .signum()
+    }
+
     /// Returns the index of the left operand of the first encountered unsafe difference
     fn unsafe_level_index(&self) -> Option<usize> {
-        // Gradient defined as last minus first
-        let gradient = self.levels.last().expect("no last level") - self.levels[0];
+        let gradient_sign = self.gradient_sign();
 
-        match self
-            .levels
-            .windows(2)
-            .map(|window| gradient.signum() * (window[1] - window[0])) // Normalize each sequence to be ascending
-            .enumerate()
-            .find(|(_, diff)| *diff < 1 || *diff > 3)
-        {
+        // Return index of left operand if the absolute difference with the right operand exceeds
+        // range 1-3 or when the sign of the difference does not match the sign of the average
+        // gradient of the report.
+        match self.levels.windows(2).enumerate().find(|(_, window)| {
+            (window[1] - window[0]).signum() != gradient_sign
+                || !(1..=3).contains(&window[1].abs_diff(window[0]))
+        }) {
             None => None,
             Some((index, _)) => Some(index),
         }
@@ -171,6 +180,9 @@ mod tests {
 
         // This case was causing the faulty first attempts (gradient was based on first two levels)
         assert_eq!(true, Report::new(vec![3, 1, 2, 3]).is_safe_tolerated());
+
+        // Case where comparing first with last to determine gradient would fail
+        assert_eq!(true, Report::new(vec![5, 2, 3, 4]).is_safe_tolerated());
 
         // From actual input
         assert_eq!(
