@@ -34,16 +34,6 @@ impl Problem {
         ]
     }
 
-    fn _neighbours(&self, x: usize, y: usize) -> Vec<&char> {
-        (x.saturating_sub(1)..x + 1)
-            .flat_map(|x2| {
-                (y.saturating_sub(1)..y + 1)
-                    .filter_map(|y2| self.char_at(x2, y2))
-                    .collect::<Vec<&char>>()
-            })
-            .collect()
-    }
-
     fn word_count(&self, word: String) -> usize {
         self.chars
             .iter()
@@ -79,6 +69,30 @@ impl Problem {
     fn part_1(&self) -> usize {
         self.word_count("XMAS".to_string())
     }
+
+    /// Lazy implementation for part 2
+    fn part_2(&self) -> usize {
+        self.chars
+            .iter()
+            .enumerate()
+            .filter(|(_, &char)| char == 'A') // only look at tiles containing an A
+            .map(|(index, _)| (index % self.width, index / self.width)) // index to coordinates
+            .filter(|(x, y)| *x > 0 && *y > 0) // ignore first row and column (prevents overflow)
+            .filter(|(x, y)| {
+                let seq = vec![
+                    self.char_at(x - 1, y - 1),
+                    self.char_at(x + 1, y - 1),
+                    self.char_at(x - 1, y + 1),
+                    self.char_at(x + 1, y + 1),
+                ]
+                .iter()
+                .filter_map(|&char| char) // Remove nones
+                .collect::<String>();
+
+                seq == "MMSS" || seq == "SSMM" || seq == "SMSM" || seq == "MSMS"
+            })
+            .count()
+    }
 }
 
 fn main() {
@@ -89,6 +103,7 @@ fn main() {
     );
 
     println!("Part 1: {}", problem.part_1()); // Attempts: 2545
+    println!("Part 2: {}", problem.part_2()); // Attempts: 1886
 }
 
 #[cfg(test)]
@@ -106,21 +121,14 @@ mod tests {
                           MAMMMXMMMM\n\
                           MXMXAXMASX";
 
-    const SAMPLE_CLEANED: &str = "....XXMAS.\n\
-                                  .SAMXMS...\n\
-                                  ...S..A...\n\
-                                  ..A.A.MS.X\n\
-                                  XMASAMX.MM\n\
-                                  X.....XA.A\n\
-                                  S.S.S.S.SS\n\
-                                  .A.A.A.A.A\n\
-                                  ..M.M.M.MM\n\
-                                  .X.X.XMASX";
-
     #[test]
     fn test_sample_part_1() {
         assert_eq!(18, Problem::from_string(SAMPLE).part_1());
-        assert_eq!(18, Problem::from_string(SAMPLE_CLEANED).part_1());
+    }
+
+    #[test]
+    fn test_sample_part_2() {
+        assert_eq!(9, Problem::from_string(SAMPLE).part_2());
     }
 
     #[test]
