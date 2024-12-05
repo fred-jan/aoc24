@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs;
 
@@ -30,11 +31,19 @@ impl Problem {
         }
     }
 
-    fn part_1(&self) -> u32 {
+    fn valid_updates(&self) -> Vec<&Vec<u32>> {
+        self.filter_updates(true)
+    }
+
+    fn invalid_updates(&self) -> Vec<&Vec<u32>> {
+        self.filter_updates(false)
+    }
+
+    fn filter_updates(&self, keep_valid: bool) -> Vec<&Vec<u32>> {
         self.updates
             .iter()
             .filter(|update| {
-                update
+                let invalid_page = update
                     .iter()
                     .enumerate()
                     // For each page in the update search for incorrect preceding pages
@@ -51,9 +60,36 @@ impl Problem {
                                 })
                                 .is_some(),
                         }
-                    })
-                    // None indicates that no invalidly ordered pages were found
-                    .is_none()
+                    });
+
+                // None indicates that no invalidly ordered pages were found
+                (invalid_page.is_none() && keep_valid) || (invalid_page.is_some() && !keep_valid)
+            })
+            .collect()
+    }
+
+    fn part_1(&self) -> u32 {
+        self.valid_updates()
+            .iter()
+            .map(|update| update[(update.len() - 1) / 2]) // Take the middle page
+            .sum()
+    }
+
+    fn part_2(&self) -> u32 {
+        self.invalid_updates()
+            .iter()
+            .map(|&update| {
+                let mut sorted_update = update.clone();
+
+                sorted_update.sort_by(|left, right| match self.rules.get(left) {
+                    None => Ordering::Equal,
+                    Some(disallowed_preceding) => match disallowed_preceding.contains(right) {
+                        true => Ordering::Less,
+                        false => Ordering::Equal,
+                    },
+                });
+
+                sorted_update
             })
             .map(|update| update[(update.len() - 1) / 2]) // Take the middle page
             .sum()
@@ -67,7 +103,8 @@ fn main() {
             .as_str(),
     );
 
-    println!("Part 1: {}", problem.part_1()); // Attempts:
+    println!("Part 1: {}", problem.part_1()); // Attempts: 5948
+    println!("Part 2: {}", problem.part_2()); // Attempts: 3062
 }
 
 #[cfg(test)]
@@ -106,5 +143,10 @@ mod tests {
     #[test]
     fn test_sample_part_1() {
         assert_eq!(143, Problem::from_string(SAMPLE).part_1());
+    }
+
+    #[test]
+    fn test_sample_part_2() {
+        assert_eq!(123, Problem::from_string(SAMPLE).part_2());
     }
 }
