@@ -47,7 +47,8 @@ impl Problem {
     fn traverse(
         &self,
         obstructions: &HashMap<Position, bool>,
-        mut circuit_breaker: impl FnMut(Position, Position) -> bool,
+        mut move_callback: impl FnMut(Position),
+        mut turn_callback: impl FnMut(Position, Position) -> bool,
     ) -> bool {
         let mut direction = self.direction;
         let mut position = self.position;
@@ -69,30 +70,35 @@ impl Problem {
             // Obstruction at new position, so rotate direction vector 90 degrees clockwise
             if obstructions.get(&new_position).is_some() {
                 direction = (-direction.1, direction.0); // (x,y) = (-y, x)
+
+                // Turn callback can also function as circuit breaker
+                if turn_callback(position, direction) {
+                    // Return false to indicate the traversal was stopped prematurely
+                    return false;
+                }
+
                 continue;
             }
 
             // Move to the new position
             position = new_position;
 
-            if circuit_breaker(position, direction) {
-                // Return false to indicate the traversal was stopped prematurely
-                return false;
-            }
+            move_callback(position);
         }
     }
 
     fn traversal_path(&self) -> Vec<Position> {
         let mut visited: Vec<Position> = vec![self.position];
 
-        self.traverse(&self.obstructions, |position, _| {
-            if !visited.contains(&position) {
-                visited.push(position);
-            }
-
-            // Always continue traversing since part 1 always converges
-            false
-        });
+        self.traverse(
+            &self.obstructions,
+            |position| {
+                if !visited.contains(&position) {
+                    visited.push(position);
+                }
+            },
+            |_, _| false,
+        );
 
         visited
     }
@@ -113,15 +119,20 @@ impl Problem {
                 visited.insert((self.position, self.direction), true);
 
                 // Only include obstruction variations whose traversal was not completed due to loop detection
-                !self.traverse(&new_obstructions, |position, direction| {
-                    // Detect loops by checking whether a position was already visited with the same direction
-                    if visited.get(&(position, direction)).is_some() {
-                        return true;
-                    }
-                    visited.insert((position, direction), true);
+                !self.traverse(
+                    &new_obstructions,
+                    |_| (),
+                    |position, direction| {
+                        // Detect loops by checking whether a position was already visited with the same direction
+                        if visited.get(&(position, direction)).is_some() {
+                            return true;
+                        }
 
-                    return false;
-                })
+                        visited.insert((position, direction), true);
+
+                        return false;
+                    },
+                )
             })
             .count()
     }
