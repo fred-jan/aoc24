@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 
 type Position = (i32, i32);
@@ -7,7 +8,7 @@ struct Problem {
     bounds: (Position, Position),
     position: Position,
     direction: Position,
-    obstructions: Vec<Position>,
+    obstructions: HashMap<Position, bool>,
 }
 
 impl Problem {
@@ -37,7 +38,7 @@ impl Problem {
                     line.chars()
                         .enumerate()
                         .filter(|(_, char)| *char == '#')
-                        .map(move |(x, _)| (x as i32, y as i32))
+                        .map(move |(x, _)| ((x as i32, y as i32), true))
                 })
                 .collect(),
         }
@@ -45,7 +46,7 @@ impl Problem {
 
     fn traverse(
         &self,
-        obstructions: &Vec<Position>,
+        obstructions: &HashMap<Position, bool>,
         mut circuit_breaker: impl FnMut(Position, Position) -> bool,
     ) -> bool {
         let mut direction = self.direction;
@@ -66,7 +67,7 @@ impl Problem {
             }
 
             // Obstruction at new position, so rotate direction vector 90 degrees clockwise
-            if obstructions.contains(&new_position) {
+            if obstructions.get(&new_position).is_some() {
                 direction = (-direction.1, direction.0); // (x,y) = (-y, x)
                 continue;
             }
@@ -102,18 +103,18 @@ impl Problem {
                 (self.bounds.0 .1..=self.bounds.1 .1).filter(move |&y| {
                     // Insert an obstruction at each unique position sequentially, then check for loops
                     let mut new_obstructions = self.obstructions.clone();
-                    new_obstructions.push((x, y));
+                    new_obstructions.insert((x, y), true);
 
-                    let mut visited: Vec<(Position, Position)> =
-                        vec![(self.position, self.direction)];
+                    let mut visited: HashMap<(Position, Position), bool> = HashMap::new();
+                    visited.insert((self.position, self.direction), true);
 
                     // Only include obstruction variations whose traversal was not completed due to loop detection
                     !self.traverse(&new_obstructions, |position, direction| {
                         // Detect loops by checking whether a position was already visited with the same direction
-                        if visited.contains(&(position, direction)) {
+                        if visited.get(&(position, direction)).is_some() {
                             return true;
                         }
-                        visited.push((position, direction));
+                        visited.insert((position, direction), true);
 
                         return false;
                     })
