@@ -82,7 +82,7 @@ impl Problem {
         }
     }
 
-    fn part_1(&self) -> usize {
+    fn traversal_path(&self) -> Vec<Position> {
         let mut visited: Vec<Position> = vec![self.position];
 
         self.traverse(&self.obstructions, |position, _| {
@@ -94,30 +94,33 @@ impl Problem {
             false
         });
 
-        visited.len()
+        visited
+    }
+
+    fn part_1(&self) -> usize {
+        self.traversal_path().len()
     }
 
     fn part_2(&self) -> usize {
-        (self.bounds.0 .0..=self.bounds.1 .0)
-            .flat_map(|x| {
-                (self.bounds.0 .1..=self.bounds.1 .1).filter(move |&y| {
-                    // Insert an obstruction at each unique position sequentially, then check for loops
-                    let mut new_obstructions = self.obstructions.clone();
-                    new_obstructions.insert((x, y), true);
+        self.traversal_path()
+            .iter()
+            .filter(move |(x, y)| {
+                // Insert an obstruction at each unique position sequentially, then check for loops
+                let mut new_obstructions = self.obstructions.clone();
+                new_obstructions.insert((*x, *y), true);
 
-                    let mut visited: HashMap<(Position, Position), bool> = HashMap::new();
-                    visited.insert((self.position, self.direction), true);
+                let mut visited: HashMap<(Position, Position), bool> = HashMap::new();
+                visited.insert((self.position, self.direction), true);
 
-                    // Only include obstruction variations whose traversal was not completed due to loop detection
-                    !self.traverse(&new_obstructions, |position, direction| {
-                        // Detect loops by checking whether a position was already visited with the same direction
-                        if visited.get(&(position, direction)).is_some() {
-                            return true;
-                        }
-                        visited.insert((position, direction), true);
+                // Only include obstruction variations whose traversal was not completed due to loop detection
+                !self.traverse(&new_obstructions, |position, direction| {
+                    // Detect loops by checking whether a position was already visited with the same direction
+                    if visited.get(&(position, direction)).is_some() {
+                        return true;
+                    }
+                    visited.insert((position, direction), true);
 
-                        return false;
-                    })
+                    return false;
                 })
             })
             .count()
