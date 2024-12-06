@@ -6,6 +6,7 @@ type Position = (i32, i32);
 struct Problem {
     bounds: (Position, Position),
     position: Position,
+    direction: Position,
     obstructions: Vec<Position>,
 }
 
@@ -28,6 +29,7 @@ impl Problem {
                 (position_index % width) as i32,
                 (position_index / width) as i32,
             ),
+            direction: (0, -1),
             obstructions: string
                 .lines()
                 .enumerate()
@@ -41,10 +43,13 @@ impl Problem {
         }
     }
 
-    fn part_1(&self) -> usize {
-        let mut direction = (0, -1);
+    fn traverse(
+        &self,
+        obstructions: &Vec<Position>,
+        mut circuit_breaker: impl FnMut(Position, Position) -> bool,
+    ) -> bool {
+        let mut direction = self.direction;
         let mut position = self.position;
-        let mut visited: Vec<Position> = vec![position];
 
         loop {
             // Determine the next position, but do not move there yet
@@ -56,11 +61,12 @@ impl Problem {
                 || new_position.1 < self.bounds.0 .1
                 || new_position.1 > self.bounds.1 .1
             {
-                break;
+                // Return true to indicate the traversal stopped naturally (reaching map boundary)
+                return true;
             }
 
             // Obstruction at new position, so rotate direction vector 90 degrees clockwise
-            if self.obstructions.contains(&new_position) {
+            if obstructions.contains(&new_position) {
                 direction = (-direction.1, direction.0); // (x,y) = (-y, x)
                 continue;
             }
@@ -68,12 +74,52 @@ impl Problem {
             // Move to the new position
             position = new_position;
 
+            if circuit_breaker(position, direction) {
+                // Return false to indicate the traversal was stopped prematurely
+                return false;
+            }
+        }
+    }
+
+    fn part_1(&self) -> usize {
+        let mut visited: Vec<Position> = vec![self.position];
+
+        self.traverse(&self.obstructions, |position, _| {
             if !visited.contains(&position) {
                 visited.push(position);
             }
-        }
+
+            // Always continue traversing since part 1 always converges
+            false
+        });
 
         visited.len()
+    }
+
+    fn part_2(&self) -> usize {
+        (self.bounds.0 .0..=self.bounds.1 .0)
+            .flat_map(|x| {
+                (self.bounds.0 .1..=self.bounds.1 .1).filter(move |&y| {
+                    // Insert an obstruction at each unique position sequentially, then check for loops
+                    let mut new_obstructions = self.obstructions.clone();
+                    new_obstructions.push((x, y));
+
+                    let mut visited: Vec<(Position, Position)> =
+                        vec![(self.position, self.direction)];
+
+                    // Only include obstruction variations whose traversal was not completed due to loop detection
+                    !self.traverse(&new_obstructions, |position, direction| {
+                        // Detect loops by checking whether a position was already visited with the same direction
+                        if visited.contains(&(position, direction)) {
+                            return true;
+                        }
+                        visited.push((position, direction));
+
+                        return false;
+                    })
+                })
+            })
+            .count()
     }
 }
 
@@ -85,6 +131,7 @@ fn main() {
     );
 
     println!("Part 1: {}", problem.part_1()); // Attempts: 4696
+    println!("Part 2: {}", problem.part_2()); // Attempts: 1443
 }
 
 #[cfg(test)]
@@ -108,5 +155,12 @@ mod tests {
 
         assert_eq!((4, 6), problem.position);
         assert_eq!(41, problem.part_1());
+    }
+
+    #[test]
+    fn test_sample_part_2() {
+        let problem = Problem::from_string(SAMPLE);
+
+        assert_eq!(6, problem.part_2());
     }
 }
