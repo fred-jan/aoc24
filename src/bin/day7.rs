@@ -4,6 +4,7 @@ use std::fs;
 enum Operator {
     Add,
     Mul,
+    Concat,
 }
 
 #[derive(Debug)]
@@ -32,6 +33,9 @@ impl Equation {
                 let evaluated = match operator {
                     Operator::Add => self.operands[0] + self.operands[1],
                     Operator::Mul => self.operands[0] * self.operands[1],
+                    Operator::Concat => format!("{}{}", self.operands[0], self.operands[1])
+                        .parse()
+                        .unwrap(),
                 };
 
                 // If these were the last operands, compare without expected outcome
@@ -72,6 +76,14 @@ impl Problem {
             .map(|eqn| eqn.outcome)
             .sum()
     }
+
+    fn part_2(&self) -> usize {
+        self.equations
+            .iter()
+            .filter(|eqn| eqn.is_solvable(&[Operator::Add, Operator::Mul, Operator::Concat]))
+            .map(|eqn| eqn.outcome)
+            .sum()
+    }
 }
 
 fn main() {
@@ -82,6 +94,7 @@ fn main() {
     );
 
     println!("Part 1: {}", problem.part_1()); // Attempts: 538191549061
+    println!("Part 2: {}", problem.part_2()); // Attempts: 34612812972206
 }
 
 #[cfg(test)]
@@ -103,6 +116,13 @@ mod tests {
         let problem = Problem::from_string(SAMPLE);
 
         assert_eq!(3749, problem.part_1());
+    }
+
+    #[test]
+    fn test_sample_part_2() {
+        let problem = Problem::from_string(SAMPLE);
+
+        assert_eq!(11387, problem.part_2());
     }
 
     #[test]
