@@ -10,7 +10,7 @@ impl Filesystem {
         Self { sectors: vec![] }
     }
 
-    fn compact(&self) -> Self {
+    fn compact_sectors(&self) -> Self {
         let files = self.sectors.iter().filter(|sector| sector.is_some());
         let file_count = files.clone().count();
 
@@ -31,6 +31,43 @@ impl Filesystem {
             ]
             .concat(),
         }
+    }
+
+    fn compact_blocks(&self) -> Self {
+        let mut compacted = self.sectors.clone();
+
+        self.sectors
+            .iter()
+            .cloned()
+            .enumerate()
+            .collect::<Vec<(usize, Option<u32>)>>()
+            .chunk_by(|a, b| a.1 == b.1)
+            .filter(|chunk| chunk.iter().all(|(_, sector)| sector.is_some())) // Only files
+            .rev() // Start from the end
+            .for_each(|file_block| {
+                // Search for an empty block fo fit this file in (search space: begin to file start)
+                if let Some(empty_block) = compacted[0..file_block[0].0]
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .collect::<Vec<(usize, Option<u32>)>>()
+                    .chunk_by(|a, b| a.1 == b.1)
+                    // Only empty blocks
+                    .filter(|chunk| chunk.iter().all(|(_, sector)| sector.is_none()))
+                    // Find empty block to fit file in
+                    .find(|empty_block| empty_block.len() >= file_block.len())
+                {
+                    // Zip empty and file blocks and switch their values
+                    empty_block.iter().zip(file_block).for_each(
+                        |((index_empty, _), (index_file, file_sector))| {
+                            compacted[*index_empty] = *file_sector;
+                            compacted[*index_file] = None;
+                        },
+                    );
+                }
+            });
+
+        Self { sectors: compacted }
     }
 
     fn checksum(&self) -> usize {
@@ -68,7 +105,11 @@ impl Problem {
     }
 
     fn part_1(&self) -> usize {
-        self.filesystem.compact().checksum()
+        self.filesystem.compact_sectors().checksum()
+    }
+
+    fn part_2(&self) -> usize {
+        self.filesystem.compact_blocks().checksum()
     }
 }
 
@@ -79,7 +120,8 @@ fn main() {
             .as_str(),
     );
 
-    println!("Part 1: {}", problem.part_1()); // Attempts:
+    println!("Part 1: {}", problem.part_1()); // Attempts: 6211348208140
+    println!("Part 2: {}", problem.part_2()); // Attempts: 6239783302560
 }
 
 #[cfg(test)]
@@ -93,5 +135,12 @@ mod tests {
         let problem = Problem::from_string(SAMPLE);
 
         assert_eq!(1928, problem.part_1());
+    }
+
+    #[test]
+    fn test_sample_part_2() {
+        let problem = Problem::from_string(SAMPLE);
+
+        assert_eq!(2858, problem.part_2());
     }
 }
