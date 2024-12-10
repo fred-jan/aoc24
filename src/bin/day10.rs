@@ -1,11 +1,42 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
+
+type Position = (u32, u32);
+
+struct Directions {
+    steps: HashMap<Position, HashSet<Position>>,
+}
+
+impl Directions {
+    fn count_paths(&self, from: Position, to: Position) -> usize {
+        match self.steps.get(&from) {
+            None => 0,
+            Some(next_positions) => {
+                if next_positions.contains(&to) {
+                    1
+                } else {
+                    next_positions
+                        .iter()
+                        .map(|&next_pos| self.count_paths(next_pos, to))
+                        .sum()
+                }
+            }
+        }
+    }
+
+    fn leads_to(&self, goal: Position) -> bool {
+        self.steps
+            .iter()
+            .find(|(_, to)| to.contains(&goal))
+            .is_some()
+    }
+}
 
 #[derive(Debug)]
 struct Map {
     width: u32,
     height: u32,
-    loc_heights: Vec<u8>,
+    heights: Vec<u8>,
 }
 
 impl Map {
@@ -13,65 +44,68 @@ impl Map {
         Self {
             width: string.find("\n").unwrap() as u32,
             height: string.lines().count() as u32,
-            loc_heights: string
+            heights: string
                 .lines()
                 .flat_map(|line| {
                     line.chars()
-                        .map(|char| char.to_digit(10).unwrap_or(10) as u8)
+                        .map(|char| char.to_digit(10).unwrap_or(127) as u8)
                 })
                 .collect(),
         }
     }
 
-    fn height_locs(&self, height: u8) -> Vec<(u32, u32)> {
-        self.loc_heights
+    fn positions_of_height(&self, of_height: u8) -> Vec<Position> {
+        self.heights
             .iter()
             .enumerate()
-            .filter(|(_, loc_height)| **loc_height == height)
+            .filter(|(_, height)| **height == of_height)
             .map(|(i, _)| (i as u32 % self.width, i as u32 / self.width))
             .collect()
     }
 
-    fn trailheads(&self) -> Vec<(u32, u32)> {
-        self.height_locs(0)
+    fn trailheads(&self) -> Vec<Position> {
+        self.positions_of_height(0)
     }
 
-    fn peaks(&self) -> Vec<(u32, u32)> {
-        self.height_locs(9)
+    fn peaks(&self) -> Vec<Position> {
+        self.positions_of_height(9)
     }
 
-    fn neighbours_of(&self, x: u32, y: u32) -> Vec<(u32, u32)> {
+    fn neighbours_of(&self, pos: Position) -> Vec<Position> {
         let mut neighbours = vec![];
-        if x > 0 {
-            neighbours.push((x - 1, y));
+        if pos.0 > 0 {
+            neighbours.push((pos.0 - 1, pos.1));
         }
-        if x < self.width - 1 {
-            neighbours.push((x + 1, y));
+        if pos.0 < self.width - 1 {
+            neighbours.push((pos.0 + 1, pos.1));
         }
-        if y > 0 {
-            neighbours.push((x, y - 1));
+        if pos.1 > 0 {
+            neighbours.push((pos.0, pos.1 - 1));
         }
-        if y < self.height - 1 {
-            neighbours.push((x, y + 1));
+        if pos.1 < self.height - 1 {
+            neighbours.push((pos.0, pos.1 + 1));
         }
         neighbours
     }
 
-    fn directions_to(&self, dest_x: u32, dest_y: u32) -> HashMap<(u32, u32), (u32, u32)> {
-        let mut graph = HashMap::new();
-        let mut frontier = vec![(dest_x, dest_y)];
-        while let Some((x, y)) = frontier.pop() {
-            let height = self.loc_heights[(x + y * self.width) as usize];
-            self.neighbours_of(x, y) // todo: filter x<0, x>width, y<0, y>height
+    fn directions_from(&self, from: Position) -> Directions {
+        let mut steps = HashMap::new();
+        let mut frontier = vec![from];
+        while let Some(current_pos) = frontier.pop() {
+            let height = self.heights[(current_pos.0 + current_pos.1 * self.width) as usize];
+            self.neighbours_of(current_pos)
                 .iter()
-                .filter(|(nx, ny)| self.loc_heights[(nx + ny * self.width) as usize] + 1 == height) // Only heights one lower than current
-                .for_each(|(nx, ny)| {
-                    frontier.push((*nx, *ny));
-                    graph.insert((*nx, *ny), (x, y));
+                .filter(|(x, y)| self.heights[(x + y * self.width) as usize] == height + 1) // Only heights one higher than current
+                .for_each(|neighbour_pos| {
+                    frontier.push(*neighbour_pos);
+                    steps
+                        .entry(current_pos)
+                        .or_insert(HashSet::new())
+                        .insert(*neighbour_pos);
                 });
         }
 
-        graph
+        Directions { steps }
     }
 }
 
@@ -88,18 +122,34 @@ impl Problem {
     }
 
     fn part_1(&self) -> usize {
-        let trailheads = self.map.trailheads();
+        let peaks = self.map.peaks();
 
         self.map
-            .peaks()
+            .trailheads()
             .iter()
-            .map(|(px, py)| {
-                let peak_directions = self.map.directions_to(*px, *py);
+            .map(|trailhead_pos| {
+                let trails = self.map.directions_from(*trailhead_pos);
                 // For each trailhead check if directions to this peak are available (= reachable)
-                trailheads
+                peaks
                     .iter()
-                    .filter(|(tx, ty)| peak_directions.contains_key(&(*tx, *ty)))
+                    .filter(|peak_pos| trails.leads_to(**peak_pos))
                     .count()
+            })
+            .sum()
+    }
+
+    fn part_2(&self) -> usize {
+        let peaks = self.map.peaks();
+
+        self.map
+            .trailheads()
+            .iter()
+            .map(|trailhead_pos| {
+                let trails = self.map.directions_from(*trailhead_pos);
+                peaks
+                    .iter()
+                    .map(|peak_pos| trails.count_paths(*trailhead_pos, *peak_pos))
+                    .sum::<usize>()
             })
             .sum()
     }
@@ -112,14 +162,15 @@ fn main() {
             .as_str(),
     );
 
-    println!("Part 1: {}", problem.part_1()); // Attempts:
+    println!("Part 1: {}", problem.part_1()); // Attempts: 822
+    println!("Part 2: {}", problem.part_2()); // Attempts: 1801
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const SAMPLE_SIMPLIFIED_1: &str = r#"...0...
+    const SAMPLE_PART1_SIMPLIFIED1: &str = r#"...0...
 ...1...
 ...2...
 6543456
@@ -127,7 +178,7 @@ mod tests {
 8.....8
 9.....9"#;
 
-    const SAMPLE_SIMPLIFIED_2: &str = r#"..90..9
+    const SAMPLE_PART1_SIMPLIFIED2: &str = r#"..90..9
 ...1.98
 ...2..7
 6543456
@@ -135,7 +186,23 @@ mod tests {
 876....
 987...."#;
 
-    const SAMPLE_FULL: &str = r#"89010123
+    const SAMPLE_PART2_SIMPLIFIED1: &str = r#".....0.
+..4321.
+..5..2.
+..6543.
+..7..4.
+..8765.
+..9...."#;
+
+    const SAMPLE_PART2_SIMPLIFIED2: &str = r#"..90..9
+...1.98
+...2..7
+6543456
+765.987
+876....
+987...."#;
+
+    const SAMPLE: &str = r#"89010123
 78121874
 87430965
 96549874
@@ -146,19 +213,26 @@ mod tests {
 
     #[test]
     fn test_sample_part_1() {
-        assert_eq!(2, Problem::from_string(SAMPLE_SIMPLIFIED_1).part_1());
-        assert_eq!(4, Problem::from_string(SAMPLE_SIMPLIFIED_2).part_1());
-        assert_eq!(36, Problem::from_string(SAMPLE_FULL).part_1());
+        assert_eq!(2, Problem::from_string(SAMPLE_PART1_SIMPLIFIED1).part_1());
+        assert_eq!(4, Problem::from_string(SAMPLE_PART1_SIMPLIFIED2).part_1());
+        assert_eq!(36, Problem::from_string(SAMPLE).part_1());
+    }
+
+    #[test]
+    fn test_sample_part_2() {
+        assert_eq!(3, Problem::from_string(SAMPLE_PART2_SIMPLIFIED1).part_2());
+        assert_eq!(13, Problem::from_string(SAMPLE_PART2_SIMPLIFIED2).part_2());
+        assert_eq!(81, Problem::from_string(SAMPLE).part_2());
     }
 
     #[test]
     fn test_map_neighbours() {
-        let map = Map::from_string(SAMPLE_FULL);
-        assert_eq!(vec![(1, 0), (0, 1)], map.neighbours_of(0, 0));
+        let map = Map::from_string(SAMPLE);
+        assert_eq!(vec![(1, 0), (0, 1)], map.neighbours_of((0, 0)));
         assert_eq!(
             vec![(0, 1), (2, 1), (1, 0), (1, 2)],
-            map.neighbours_of(1, 1)
+            map.neighbours_of((1, 1))
         );
-        assert_eq!(vec![(6, 7), (7, 6)], map.neighbours_of(7, 7));
+        assert_eq!(vec![(6, 7), (7, 6)], map.neighbours_of((7, 7)));
     }
 }
