@@ -1,8 +1,38 @@
+use std::collections::HashMap;
 use std::fs;
+
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+struct Stone {
+    number: usize,
+}
+
+impl Stone {
+    fn new(number: usize) -> Self {
+        Self { number }
+    }
+
+    fn blink(&self) -> Stones {
+        if self.number == 0 {
+            return Stones::from_slice(&[Self::new(1)]);
+        }
+
+        let string = self.number.to_string();
+
+        if string.len() % 2 == 0 {
+            let split_at = string.len() / 2;
+            return Stones::from_slice(&[
+                Self::new(string[0..split_at].parse().unwrap()),
+                Self::new(string[split_at..].parse().unwrap()),
+            ]);
+        }
+
+        Stones::from_slice(&[Self::new(self.number * 2024)])
+    }
+}
 
 #[derive(Debug)]
 struct Stones {
-    elements: Vec<usize>,
+    elements: Vec<Stone>,
 }
 
 impl Stones {
@@ -10,41 +40,52 @@ impl Stones {
         Self {
             elements: string
                 .split_whitespace()
-                .map(|stone| stone.parse().unwrap())
+                .map(|stone| Stone::new(stone.parse().unwrap()))
                 .collect(),
         }
     }
 
-    fn blink(&self, times: u32) -> Self {
-        let new = Self {
-            elements: self
-                .elements
-                .iter()
-                .flat_map(|&stone| {
-                    if stone == 0 {
-                        return vec![1];
-                    }
-
-                    let string = stone.to_string();
-
-                    if string.len() % 2 == 0 {
-                        let imid = string.len() / 2;
-                        return vec![
-                            string[0..imid].parse().unwrap(),
-                            string[imid..].parse().unwrap(),
-                        ];
-                    }
-
-                    vec![stone * 2024]
-                })
-                .collect(),
-        };
-
-        if times > 1 {
-            return new.blink(times - 1);
+    fn from_slice(list: &[Stone]) -> Self {
+        Self {
+            elements: list.to_vec(),
         }
+    }
 
-        new
+    fn blink_count(&self, times: u32) -> usize {
+        let mut cache = HashMap::new();
+        self.blink_count_cached(times, &mut cache)
+    }
+
+    fn blink_count_cached(
+        &self,
+        blink_times: u32,
+        mut cache: &mut HashMap<Stone, HashMap<u32, usize>>,
+    ) -> usize {
+        self.elements
+            .iter()
+            .map(|&stone| {
+                let cached_stone_counts = cache.entry(stone).or_insert(HashMap::new());
+
+                // Check if this stone has been blinked before this many times, if so re-use count
+                if let Some(&cached_count) = cached_stone_counts.get(&blink_times) {
+                    return cached_count;
+                }
+
+                // Stone has not been blinked this many times, so let's do it!
+                let blink_stones = stone.blink();
+
+                // Count and cache the number of stones after blinking (recursive case + special case)
+                if blink_times > 1 {
+                    let count = blink_stones.blink_count_cached(blink_times - 1, &mut cache);
+                    cache.get_mut(&stone).unwrap().insert(blink_times, count);
+                    count
+                } else {
+                    let count = blink_stones.elements.len();
+                    cached_stone_counts.insert(blink_times, count);
+                    count
+                }
+            })
+            .sum()
     }
 }
 
@@ -61,7 +102,11 @@ impl Problem {
     }
 
     fn part_1(&self) -> usize {
-        self.stones.blink(25).elements.len()
+        self.stones.blink_count(25)
+    }
+
+    fn part_2(&self) -> usize {
+        self.stones.blink_count(75)
     }
 }
 
@@ -73,6 +118,7 @@ fn main() {
     );
 
     println!("Part 1: {}", problem.part_1()); // Attempts: 216996
+    println!("Part 2: {}", problem.part_2()); // Attempts: 14090595 (too low), 257335372288947
 }
 
 #[cfg(test)]
