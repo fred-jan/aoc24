@@ -1,6 +1,6 @@
 use std::fs;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone, Copy)]
 struct Vec2 {
     x: u32,
     y: u32,
@@ -10,46 +10,112 @@ impl Vec2 {
     fn new(x: u32, y: u32) -> Self {
         Self { x, y }
     }
+
+    fn is_adjacent(&self, other: Vec2) -> bool {
+        let dx = self.x.abs_diff(other.x);
+        let dy = self.y.abs_diff(other.y);
+
+        dx == 0 && dy == 1 || dx == 1 && dy == 0
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Region {
     plant: char,
-    locations: Vec<Vec2>,
+    positions: Vec<Vec2>,
 }
 
 impl Region {
     fn perimeter(&self) -> u32 {
-        0
+        let shared_borders: u32 = self
+            .positions
+            .iter()
+            .enumerate()
+            .map(|(index, pos)| {
+                self.positions[index + 1..]
+                    .iter()
+                    .filter(|&&other| pos.is_adjacent(other))
+                    .count() as u32
+            })
+            .sum();
+
+        self.positions.len() as u32 * 4 - 2 * shared_borders
     }
 
     fn area(&self) -> u32 {
-        self.locations.len() as u32
+        self.positions.len() as u32
     }
 
     fn price(&self) -> u32 {
         self.perimeter() * self.area()
+    }
+
+    fn is_adjacent_pos(&self, pos: Vec2) -> bool {
+        self.positions
+            .iter()
+            .find(|plant_pos| plant_pos.is_adjacent(pos))
+            .is_some()
     }
 }
 
 #[derive(Debug)]
 struct Plot {
     width: u32,
-    height: u32,
-    tiles: Vec<char>,
+    plants: Vec<char>,
 }
 
 impl Plot {
     fn from_string(string: &str) -> Self {
         Self {
             width: string.find("\n").unwrap() as u32,
-            height: string.lines().count() as u32,
-            tiles: string.lines().flat_map(|line| line.chars()).collect(),
+            plants: string.lines().flat_map(|line| line.chars()).collect(),
         }
     }
 
     fn regions(&self) -> Vec<Region> {
-        vec![]
+        let regions: Vec<Region> =
+            self.plants
+                .iter()
+                .enumerate()
+                .fold(Vec::new(), |mut regions, (index, &plant)| {
+                    let pos = Vec2::new(index as u32 % self.width, index as u32 / self.width);
+
+                    let adjacent_regions: Vec<(usize, Region)> = regions
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, region)| region.plant == plant && region.is_adjacent_pos(pos))
+                        .map(|(index, region)| (index, region.clone()))
+                        .collect();
+
+                    let mut region = if adjacent_regions.len() == 0 {
+                        Region {
+                            plant,
+                            positions: vec![],
+                        }
+                    } else {
+                        // Multiple adjacent regions to join, so the plant is effectively connecting two
+                        // or more region into one new big region. So let's remove the old regions first.
+                        adjacent_regions.iter().rev().for_each(|(index, _)| {
+                            regions.remove(*index);
+                        });
+
+                        // Next create one big new region containing all plants of previous regions
+                        Region {
+                            plant,
+                            positions: adjacent_regions
+                                .iter()
+                                .flat_map(|(_, adjacent_region)| adjacent_region.positions.clone())
+                                .collect(),
+                        }
+                    };
+
+                    region.positions.push(pos);
+                    regions.push(region);
+
+                    regions
+                });
+
+        regions
     }
 }
 
@@ -66,8 +132,6 @@ impl Problem {
     }
 
     fn part_1(&self) -> u32 {
-        dbg!(&self.plot);
-
         self.plot
             .regions()
             .iter()
@@ -83,7 +147,7 @@ fn main() {
             .as_str(),
     );
 
-    println!("Part 1: {}", problem.part_1()); // Attempts:
+    println!("Part 1: {}", problem.part_1()); // Attempts: 1449902
 }
 
 #[cfg(test)]
@@ -115,7 +179,7 @@ MMMISSJEEE"#;
     #[test]
     fn test_sample_part_1() {
         assert_eq!(140, Problem::from_string(SAMPLE1).part_1());
-        // assert_eq!(772, Problem::from_string(SAMPLE2).part_1());
-        // assert_eq!(1930, Problem::from_string(SAMPLE3).part_1());
+        assert_eq!(772, Problem::from_string(SAMPLE2).part_1());
+        assert_eq!(1930, Problem::from_string(SAMPLE3).part_1());
     }
 }
