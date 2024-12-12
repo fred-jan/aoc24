@@ -1,13 +1,14 @@
+use std::collections::{HashMap, HashSet};
 use std::fs;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 struct Vec2 {
-    x: u32,
-    y: u32,
+    x: i32,
+    y: i32,
 }
 
 impl Vec2 {
-    fn new(x: u32, y: u32) -> Self {
+    fn new(x: i32, y: i32) -> Self {
         Self { x, y }
     }
 
@@ -22,24 +23,78 @@ impl Vec2 {
 #[derive(Debug, Clone)]
 struct Region {
     plant: char,
-    positions: Vec<Vec2>,
+    positions: HashSet<Vec2>,
 }
 
 impl Region {
+    fn new(plant: char) -> Self {
+        Self {
+            plant,
+            positions: HashSet::new(),
+        }
+    }
+
     fn perimeter(&self) -> u32 {
         let shared_borders: u32 = self
             .positions
             .iter()
             .enumerate()
-            .map(|(index, pos)| {
-                self.positions[index + 1..]
+            .map(|(index, &pos)| {
+                self.positions
                     .iter()
-                    .filter(|&&other| pos.is_adjacent(other))
+                    .skip(index + 1)
+                    .filter(|&&other| pos != other && pos.is_adjacent(other))
                     .count() as u32
             })
             .sum();
 
         self.positions.len() as u32 * 4 - 2 * shared_borders
+    }
+
+    /// Returns the number of corners the region has, which is the same as the number of sides
+    fn sides(&self) -> u32 {
+        self.positions
+            .iter()
+            // Create hashmap mapping each of the four corners of a plant to the plant that touches
+            // this corner. Corner coordinates are expanded from the plant coordinate, so plant
+            // (x,y) has corners (x,y), (x,y+1), (x+1,y), (x+1,y+1).
+            .fold(
+                HashMap::new(),
+                |mut acc: HashMap<Vec2, Vec<Vec2>>, &plant_pos| {
+                    acc.entry(plant_pos).or_insert(vec![]).push(plant_pos);
+                    acc.entry(Vec2::new(plant_pos.x, plant_pos.y + 1))
+                        .or_insert(vec![])
+                        .push(plant_pos);
+                    acc.entry(Vec2::new(plant_pos.x + 1, plant_pos.y))
+                        .or_insert(vec![])
+                        .push(plant_pos);
+                    acc.entry(Vec2::new(plant_pos.x + 1, plant_pos.y + 1))
+                        .or_insert(vec![])
+                        .push(plant_pos);
+
+                    acc
+                },
+            )
+            .iter()
+            .map(|(_, plants)| match plants.len() {
+                // Count corners shared with only one plant or by three plants 1, these respectively
+                // represent the outside and inside corners of the region.
+                1 | 3 => 1,
+                // Corners shared by two plants should be counted twice as an outside corner if
+                // those plants are diagonal to each other (this is the special case of diagonal
+                // regions that was mentioned in the instructions).
+                2 => {
+                    if plants[0].x.abs_diff(plants[1].x) == 1
+                        && plants[0].y.abs_diff(plants[1].y) == 1
+                    {
+                        2
+                    } else {
+                        0
+                    }
+                }
+                4 | _ => 0,
+            })
+            .sum()
     }
 
     fn area(&self) -> u32 {
@@ -48,6 +103,10 @@ impl Region {
 
     fn price(&self) -> u32 {
         self.perimeter() * self.area()
+    }
+
+    fn discounted_price(&self) -> u32 {
+        self.sides() * self.area()
     }
 
     fn is_adjacent_pos(&self, pos: Vec2) -> bool {
@@ -67,7 +126,7 @@ struct Plot {
 impl Plot {
     fn from_string(string: &str) -> Self {
         Self {
-            width: string.find("\n").unwrap() as u32,
+            width: string.find("\n").unwrap_or(string.len()) as u32,
             plants: string.lines().flat_map(|line| line.chars()).collect(),
         }
     }
@@ -78,7 +137,10 @@ impl Plot {
                 .iter()
                 .enumerate()
                 .fold(Vec::new(), |mut regions, (index, &plant)| {
-                    let pos = Vec2::new(index as u32 % self.width, index as u32 / self.width);
+                    let pos = Vec2::new(
+                        (index as u32 % self.width) as i32,
+                        (index as u32 / self.width) as i32,
+                    );
 
                     let adjacent_regions: Vec<(usize, Region)> = regions
                         .iter()
@@ -88,10 +150,7 @@ impl Plot {
                         .collect();
 
                     let mut region = if adjacent_regions.len() == 0 {
-                        Region {
-                            plant,
-                            positions: vec![],
-                        }
+                        Region::new(plant)
                     } else {
                         // Multiple adjacent regions to join, so the plant is effectively connecting two
                         // or more region into one new big region. So let's remove the old regions first.
@@ -109,7 +168,7 @@ impl Plot {
                         }
                     };
 
-                    region.positions.push(pos);
+                    region.positions.insert(pos);
                     regions.push(region);
 
                     regions
@@ -138,6 +197,14 @@ impl Problem {
             .map(|region| region.price())
             .sum()
     }
+
+    fn part_2(&self) -> u32 {
+        self.plot
+            .regions()
+            .iter()
+            .map(|region| region.discounted_price())
+            .sum()
+    }
 }
 
 fn main() {
@@ -148,24 +215,25 @@ fn main() {
     );
 
     println!("Part 1: {}", problem.part_1()); // Attempts: 1449902
+    println!("Part 2: {}", problem.part_2()); // Attempts: 908042
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const SAMPLE1: &str = r#"AAAA
+    const SAMPLE_SIMPLIFIED_1: &str = r#"AAAA
 BBCD
 BBCC
 EEEC"#;
 
-    const SAMPLE2: &str = r#"OOOOO
+    const SAMPLE_SIMPLIFIED2: &str = r#"OOOOO
 OXOXO
 OOOOO
 OXOXO
 OOOOO"#;
 
-    const SAMPLE3: &str = r#"RRRRIICCFF
+    const SAMPLE: &str = r#"RRRRIICCFF
 RRRRIICCCF
 VVRRRCCFFF
 VVRCCCJFFF
@@ -176,10 +244,48 @@ MIIIIIJJEE
 MIIISIJEEE
 MMMISSJEEE"#;
 
+    const SAMPLE_SIMPLIFIED3: &str = r#"EEEEE
+EXXXX
+EEEEE
+EXXXX
+EEEEE"#;
+
+    const SAMPLE_SIMPLIFIED4: &str = r#"AAAAAA
+AAABBA
+AAABBA
+ABBAAA
+ABBAAA
+AAAAAA"#;
+
     #[test]
     fn test_sample_part_1() {
-        assert_eq!(140, Problem::from_string(SAMPLE1).part_1());
-        assert_eq!(772, Problem::from_string(SAMPLE2).part_1());
-        assert_eq!(1930, Problem::from_string(SAMPLE3).part_1());
+        assert_eq!(140, Problem::from_string(SAMPLE_SIMPLIFIED_1).part_1());
+        assert_eq!(772, Problem::from_string(SAMPLE_SIMPLIFIED2).part_1());
+        assert_eq!(1930, Problem::from_string(SAMPLE).part_1());
+    }
+    #[test]
+    fn test_sample_part_2() {
+        assert_eq!(80, Problem::from_string(SAMPLE_SIMPLIFIED_1).part_2());
+        assert_eq!(436, Problem::from_string(SAMPLE_SIMPLIFIED2).part_2());
+        assert_eq!(236, Problem::from_string(SAMPLE_SIMPLIFIED3).part_2());
+        assert_eq!(368, Problem::from_string(SAMPLE_SIMPLIFIED4).part_2());
+        assert_eq!(1206, Problem::from_string(SAMPLE).part_2());
+    }
+
+    #[test]
+    fn test_region_sides() {
+        assert_eq!(4, Plot::from_string("AAA").regions()[0].sides());
+        assert_eq!(4, Plot::from_string("A\nA\nA").regions()[0].sides());
+        assert_eq!(4, Plot::from_string("AA\nAA").regions()[0].sides());
+        assert_eq!(6, Plot::from_string("AA\nA").regions()[0].sides());
+        assert_eq!(6, Plot::from_string("AAA\nA").regions()[0].sides());
+
+        let plot = Plot::from_string(
+            "RRRR..\n\
+             ..RRR.\n\
+             ..R...",
+        );
+        assert_eq!('R', plot.regions()[1].plant);
+        assert_eq!(10, plot.regions()[1].sides());
     }
 }
