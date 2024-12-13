@@ -1,9 +1,21 @@
 use std::fs;
+use std::ops::Add;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 struct Vec2 {
-    x: i32,
-    y: i32,
+    x: i64,
+    y: i64,
+}
+
+impl Add<i64> for Vec2 {
+    type Output = Self;
+
+    fn add(self, rhs: i64) -> Self::Output {
+        Vec2 {
+            x: self.x + rhs,
+            y: self.y + rhs,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -15,7 +27,7 @@ struct Machine {
 
 impl Machine {
     /// Using solution to the corresponding system of equations
-    fn prize_combination(&self) -> Option<(u32, u32)> {
+    fn prize_combination(&self) -> Option<(u64, u64)> {
         let discriminant = self.button_b.x * self.button_a.y - self.button_a.x * self.button_b.y;
 
         if discriminant == 0 {
@@ -32,9 +44,17 @@ impl Machine {
         }
 
         Some((
-            (numerator_a / discriminant) as u32,
-            (numerator_b / -discriminant) as u32,
+            (numerator_a / discriminant) as u64,
+            (numerator_b / -discriminant) as u64,
         ))
+    }
+
+    fn correct_prize(&self) -> Self {
+        Self {
+            button_a: self.button_a,
+            button_b: self.button_b,
+            prize: self.prize + 10_000_000_000_000,
+        }
     }
 }
 
@@ -80,12 +100,21 @@ impl Problem {
         }
     }
 
-    fn part_1(&self) -> u32 {
+    fn part_1(&self) -> u64 {
         self.machines
             .iter()
             .filter_map(|machine| machine.prize_combination())
             .filter(|(times_a, times_b)| *times_a <= 100 && *times_b <= 100)
-            .map(|(times_a, times_b)| (times_a) * 3 + (times_b))
+            .map(|(times_a, times_b)| times_a * 3 + times_b)
+            .sum()
+    }
+
+    fn part_2(&self) -> u64 {
+        self.machines
+            .iter()
+            .map(|machine| machine.correct_prize())
+            .filter_map(|machine| machine.prize_combination())
+            .map(|(times_a, times_b)| times_a * 3 + times_b)
             .sum()
     }
 }
@@ -98,6 +127,7 @@ fn main() {
     );
 
     println!("Part 1: {}", problem.part_1()); // Attempts: 38487 (too high), 36838
+    println!("Part 2: {}", problem.part_2()); // Attempts: 83029436920891
 }
 
 #[cfg(test)]
@@ -128,5 +158,10 @@ Prize: X=12748, Y=12176"#;
     fn test_sample_part_1() {
         assert_eq!(0, Problem::from_string(SAMPLE_SIMPLIFIED1).part_1());
         assert_eq!(480, Problem::from_string(SAMPLE).part_1());
+    }
+
+    #[test]
+    fn test_sample_part_2() {
+        assert_eq!(875318608908, Problem::from_string(SAMPLE).part_2());
     }
 }
