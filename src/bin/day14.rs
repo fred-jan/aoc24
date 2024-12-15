@@ -1,7 +1,9 @@
+use std::collections::HashSet;
+use std::fmt::{Display, Formatter};
 use std::fs;
 use std::ops::{Add, Div, Mul, Rem};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 struct Vec2i {
     x: i32,
     y: i32,
@@ -34,13 +36,6 @@ impl Div<Vec2i> for Vec2i {
     }
 }
 
-// impl Rem<i32> for Vec2i {
-//     type Output = Self;
-//     fn rem(self, rhs: i32) -> Self {
-//         Vec2i::new(self.x % rhs, self.y % rhs)
-//     }
-// }
-
 impl Rem<Vec2i> for Vec2i {
     type Output = Self;
     fn rem(self, rhs: Vec2i) -> Self {
@@ -61,7 +56,39 @@ struct Robot {
     velocity: Vec2i,
 }
 
-#[derive(Debug)]
+impl Robot {
+    fn elapse_time(&self, seconds: u32, area_dims: Vec2i) -> Self {
+        let mut position = (self.position + self.velocity * seconds as i32) % area_dims;
+
+        // Process boundary wrapping (teleports)
+        position = (position + area_dims) % area_dims;
+
+        Self {
+            position,
+            velocity: self.velocity,
+        }
+    }
+
+    /// Iterative approach since I'm too lazy to lookup how to determine modular inverses
+    fn repeat_interval(&self, area_dims: Vec2i) -> u32 {
+        let mut robot = self.clone();
+        let mut previous_pos = HashSet::new();
+        (1..)
+            .find(|_| {
+                previous_pos.insert(robot.position);
+
+                robot = robot.elapse_time(1, area_dims);
+
+                if !previous_pos.contains(&robot.position) {
+                    return false;
+                }
+                return true;
+            })
+            .unwrap()
+    }
+}
+
+#[derive(Debug, Clone)]
 struct Area {
     dimensions: Vec2i,
     robots: Vec<Robot>,
@@ -93,26 +120,12 @@ impl Area {
             robots: self
                 .robots
                 .iter()
-                .map(|robot| {
-                    let mut position =
-                        (robot.position + robot.velocity * seconds as i32) % self.dimensions;
-
-                    // Boundary warpping (teleports)
-                    position = (position + self.dimensions) % self.dimensions;
-
-                    Robot {
-                        position: position,
-                        velocity: robot.velocity,
-                    }
-                })
+                .map(|robot| robot.elapse_time(seconds, self.dimensions))
                 .collect(),
         }
     }
 
     fn quadrants(&self) -> Vec<Self> {
-        // dims: (11,7) -> 4x (5,3)
-        // bounds: (0-4)
-
         let quadrant_dims = self.dimensions / 2;
 
         (0..2)
@@ -138,6 +151,73 @@ impl Area {
     fn robot_count(&self) -> usize {
         self.robots.len()
     }
+
+    fn robot_at(&self, position: Vec2i) -> Option<&Robot> {
+        self.robots.iter().find(|robot| robot.position == position)
+    }
+
+    /// Leftover of failed attempt to assumed peak would be in the middle of the top row
+    fn _top_centered_robot(&self) -> Option<Robot> {
+        match self.robot_at(Vec2i::new(self.dimensions.x / 2, 0)) {
+            Some(&robot) => {
+                // return Some(robot);
+                if ((0..self.dimensions.x)
+                    .filter_map(|x| self.robot_at(Vec2i::new(x, 0)))
+                    .count())
+                    == 1
+                {
+                    return Some(robot);
+                }
+                None
+            }
+            None => None,
+        }
+    }
+
+    /// Searches for top robot of this shape:
+    ///
+    ///   #
+    ///  ###
+    /// #####
+    ///
+    /// Determined this shape after first searching for this shape (by guess) and then observing
+    /// those results to determine the filled shape above.
+    ///
+    ///   #
+    ///  # #
+    /// #   #
+    fn peak_robot(&self) -> Option<Robot> {
+        self.robots
+            .iter()
+            .find(|robot| {
+                self.robot_at(robot.position + Vec2i::new(-1, 1)).is_some()
+                    && self.robot_at(robot.position + Vec2i::new(1, 1)).is_some()
+                    && self.robot_at(robot.position + Vec2i::new(-2, 2)).is_some()
+                    && self.robot_at(robot.position + Vec2i::new(2, 2)).is_some()
+                    // These were added once I manually observed the tree using above criteria
+                    && self.robot_at(robot.position + Vec2i::new(0, 1)).is_some()
+                    && self.robot_at(robot.position + Vec2i::new(-1, 2)).is_some()
+                    && self.robot_at(robot.position + Vec2i::new(0, 2)).is_some()
+                    && self.robot_at(robot.position + Vec2i::new(1, 2)).is_some()
+            })
+            .cloned()
+    }
+}
+
+impl Display for Area {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut output = String::new();
+
+        (0..self.dimensions.y).for_each(|y| {
+            (0..self.dimensions.x).for_each(|x| match self.robot_at(Vec2i::new(x, y)) {
+                None => output.push('.'),
+                Some(_) => output.push('#'),
+            });
+            output.push_str("\n");
+        });
+
+        write!(f, "{}", output)
+    }
 }
 
 #[derive(Debug)]
@@ -161,6 +241,17 @@ impl Problem {
             .reduce(|acc, count| acc * count)
             .unwrap()
     }
+
+    /// repeat interval = 10403, so manually seeking not really doable
+    fn part_2(&self) -> u32 {
+        let mut area = self.area.clone();
+        (1..area.robots[0].repeat_interval(area.dimensions))
+            .find(|_| {
+                area = area.elapse_time(1);
+                area.peak_robot().is_some()
+            })
+            .unwrap()
+    }
 }
 
 fn main() {
@@ -172,7 +263,9 @@ fn main() {
             .as_str(),
     );
 
-    println!("Part 1: {}", problem.part_1()); // Attempts:
+    println!("Part 1: {}", problem.part_1()); // Attempts: 222901875
+    println!("Part 2: {}", problem.part_2()); // Attempts: 6243
+    println!("Christmas tree:\n{}", problem.area.elapse_time(6243));
 }
 
 #[cfg(test)]
